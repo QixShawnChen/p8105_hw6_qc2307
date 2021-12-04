@@ -1,0 +1,196 @@
+---
+title: "p8105_hw6_qc2307"
+author: "Qixiang Chen"
+date: "12/3/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(modelr)
+library(ggplot2)
+library(p8105.datasets)
+```
+
+
+
+## Problem 1
+```{r}
+df_regression = read_csv("./birthweight.csv") %>%
+  janitor::clean_names() %>%
+  mutate(
+    babysex = as.factor(babysex),
+    frace = as.factor(frace),
+    malform = as.factor(malform),
+    mrace = as.factor(mrace)
+  ) 
+df_regression
+```
+
+
+Step2: Test whether there is NA or not.
+```{r}
+purrr::map(df_regression, ~ sum(is.na(.)))
+```
+Comment:
+
+
+
+Step3: Propose a regression model for birthweight and show a plot of model residuals against fitted values 
+```{r}
+model1 = lm(bwt ~ delwt + fincome + gaweeks + malform + momage + mrace + parity, data = df_regression)
+model1
+df_regression %>%
+  add_residuals(model1) %>%
+  add_predictions(model1) %>%
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point(alpha = 0.5) + 
+  geom_smooth(se = F, color = "blue", method = "lm") + 
+  labs(
+    x = "residuals", 
+    y = "predictions",
+    title = "Prediction vs. Residuals"
+  ) + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+Step4: Propose two other functions:
+```{r}
+model2 = lm(bwt ~ gaweeks + blength + delwt, data = df_regression)
+model3 = lm(bwt ~ gaweeks + bhead + menarche + wtgain + blength + bhead * blength, data = df_regression)
+```
+
+
+Step5: Cross Valiation
+```{r}
+df_cv = 
+  crossv_mc(df_regression, 100) %>%
+  mutate(
+    training_set = map(train, as_tibble),
+    testing_set = map(test, as_tibble)
+  ) %>%
+  mutate(
+    model1 = map(.x = training_set, ~lm(bwt ~ delwt + fincome + gaweeks + malform + momage + mrace + parity, data = .x)),
+    model2 = map(.x = training_set, ~lm(bwt ~ gaweeks + blength + delwt, data = .x)),
+    model3 = map(.x = training_set, ~lm(bwt ~ gaweeks + bhead + menarche + wtgain + blength + bhead * blength, data = .x))
+  ) %>%
+  mutate(
+    model1_rmse = map2_dbl(.x = model1, .y = testing_set, ~rmse(model = .x, data = .y)),
+    model2_rmse = map2_dbl(.x = model2, .y = testing_set, ~rmse(model = .x, data = .y)),
+    model3_rmse = map2_dbl(.x = model3, .y = testing_set, ~rmse(model = .x, data = .y))
+  ) 
+```
+
+
+Step6: Plot of RMSE
+```{r}
+df_cv %>%
+  select(model1_rmse, model2_rmse, model3_rmse) %>%
+  pivot_longer(
+    model1_rmse:model3_rmse,
+    names_to = "model",
+    values_to = "rmse"
+  ) %>%
+  ggplot(aes(x = model, y = rmse)) +
+  geom_violin()
+```
+Comment:
+
+
+
+## Problem 2
+Step1: load in data
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+Step2: bootstrap
+```{r}
+set.seed(12345)
+boot_sample = function(df) {
+  sample_frac(df, replace = TRUE)
+}
+boot_straps = 
+  data_frame(
+    strap_number = 1:5000,
+    strap_sample = rerun(5000, boot_sample(weather_df))
+  )
+```
+
+
+results:
+```{r}
+boot_results = 
+  boot_straps %>%
+  mutate(
+    models = map(.x = strap_sample, ~lm(tmax ~ tmin, data = .x)),
+    results = map(models, broom::glance)
+  ) %>%
+  select(strap_number, results) %>%
+  unnest(results)
+```
+
+
+
+R^2
+```{r}
+boot_results %>%
+  ggplot(aes(x = adj.r.squared)) +
+  geom_density() +
+  labs(
+    title = "Distribution of R squard",
+    x = "R Squared"
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+Comment:
+
+
+Log function
+```{r}
+bootstrap2 = weather_df %>%
+  bootstrap(5000, id = "strap_num") %>%
+  mutate(
+    models = map(.x = strap, ~lm(tmax ~ tmin, data = .x)),
+    results = map(models, broom::tidy)
+  ) %>%
+  select(strap_num, results) %>%
+  unnest(results) %>%
+  select(term, estimate) %>%
+  pivot_wider(
+    names_from = term,
+    values_from = estimate
+  ) %>%
+  unnest(cols = c(`(Intercept)`, tmin)) %>%
+  rename(
+    beta0 = "(Intercept)",
+    beta1 = tmin
+  ) %>%
+  mutate(
+    log_function = log(beta0 * beta1)
+  )
+```
+
+
+
+plot
+```{r}
+bootstrap2 %>%
+  ggplot(aes(x = log_function)) + 
+  geom_density() + 
+  labs(x = "Log Function",
+       title = "distribution") + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+Comment:
+
