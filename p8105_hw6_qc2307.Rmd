@@ -2,7 +2,7 @@
 title: "p8105_hw6_qc2307"
 author: "Qixiang Chen"
 date: "12/3/2021"
-output: html_document
+output: github_document
 ---
 
 ```{r}
@@ -10,11 +10,13 @@ library(tidyverse)
 library(modelr)
 library(ggplot2)
 library(p8105.datasets)
+library(plotly)
 ```
 
 
 
 ## Problem 1
+#### Step1: Load in data and clean.
 ```{r}
 df_regression = read_csv("./birthweight.csv") %>%
   janitor::clean_names() %>%
@@ -28,15 +30,15 @@ df_regression
 ```
 
 
-Step2: Test whether there is NA or not.
+#### Step2: Test whether there is NA or not.
 ```{r}
 purrr::map(df_regression, ~ sum(is.na(.)))
 ```
-Comment:
+Description of modeling process: Firstly, I loaded in the data. As the requirement, some variables need to be converted into factors, so I firstly converted `babysex`, `frace`, `malform`, and `mrace` from double to factor. Then, I checked if there is any NA in each variable. I found there was no NA in this dataframe. 
 
 
 
-Step3: Propose a regression model for birthweight and show a plot of model residuals against fitted values 
+#### Step3: Propose a regression model for birthweight and show a plot of model residuals against fitted values 
 ```{r}
 model1 = lm(bwt ~ delwt + fincome + gaweeks + malform + momage + mrace + parity, data = df_regression)
 model1
@@ -53,16 +55,18 @@ df_regression %>%
   ) + 
   theme(plot.title = element_text(hjust = 0.5))
 ```
+Comment:
+For the first regression model, I have chosen the variables that may directly affect the baby's birth weight according to materials online, including `delwt`, `fincome`, `gaweeks`, `malform`, `momage`, `mrace`, `parity`, which are mother's weight at delivery, family monthly income, gestational age in weeks, presence of malformations that could affect weight, mother’s age at delivery, mother’s race, number of live births prior to this pregnancy, respectively.
 
 
-Step4: Propose two other functions:
+#### Step4: Propose two other functions:
 ```{r}
-model2 = lm(bwt ~ gaweeks + blength + delwt, data = df_regression)
-model3 = lm(bwt ~ gaweeks + bhead + menarche + wtgain + blength + bhead * blength, data = df_regression)
+model2 = lm(bwt ~ blength + gaweeks, data = df_regression)
+model3 = lm(bwt ~ blength + bhead + babysex +  bhead * babysex + blength * babysex + blength * bhead, data = df_regression)
 ```
 
 
-Step5: Cross Valiation
+#### Step5: Cross Valiation
 ```{r}
 df_cv = 
   crossv_mc(df_regression, 100) %>%
@@ -83,7 +87,7 @@ df_cv =
 ```
 
 
-Step6: Plot of RMSE
+#### Step6: Plot of RMSE
 ```{r}
 df_cv %>%
   select(model1_rmse, model2_rmse, model3_rmse) %>%
@@ -95,7 +99,7 @@ df_cv %>%
   ggplot(aes(x = model, y = rmse)) +
   geom_violin()
 ```
-Comment:
+Comment: According to the graph derived, we know that here the model3 fits best among the three models since it has the lowest rmse among the three models. Maybe it is because of there are three interactions in model 3.
 
 
 
@@ -144,7 +148,8 @@ boot_results =
 
 R^2
 ```{r}
-boot_results %>%
+p_r_square = 
+  boot_results %>%
   ggplot(aes(x = adj.r.squared)) +
   geom_density() +
   labs(
@@ -152,8 +157,9 @@ boot_results %>%
     x = "R Squared"
   ) +
   theme(plot.title = element_text(hjust = 0.5))
+p_r_square
 ```
-Comment:
+Comment:The distribution is about normal. The center is around R^2 = 0.91. The 95% confidence interval is (`r quantile(boot_results$adj.r.squared, probs = 0.025)`, `r quantile(boot_results$adj.r.squared, probs = 0.975)`)
 
 
 Log function
@@ -193,4 +199,4 @@ bootstrap2 %>%
   theme(plot.title = element_text(hjust = 0.5))
 ```
 Comment:
-
+The distribution of log function is about normal. The center is around 2.01. The 95% confidence interval is (`r quantile(bootstrap2$log_function, probs = 0.025)`, `r quantile(bootstrap2$log_function, probs = 0.975)`)
